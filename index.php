@@ -1,3 +1,13 @@
+<?php
+$scheme = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') ||
+           $_SERVER['SERVER_PORT']==443 ||
+		   (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO']=='https')
+		  ) ? 'https':'http';
+$host = $_SERVER['HTTP_HOST'];
+$self = parse_url($_SERVER["REQUEST_URI"], PHP_URL_PATH);
+$self = preg_replace("/index.php$/","",$self);
+?>
+
 <!doctype html>
 <html lang="en">
 <head>
@@ -99,7 +109,12 @@
 <script>
   const uppy = Uppy.Core({debug: true, autoProceed: false})
     .use(Uppy.Dashboard, {target: '#uppyUploader', inline: true})
-    .use(Uppy.Tus, {endpoint: 'https://labs.chryseis.be/ffm/files/', chunkSize: 5242880})
+    .use(Uppy.Tus, {
+<?php
+	echo "endpoint: '".$scheme."://".$host.$self."files/',";
+	echo "chunkSize: ".(5*1024*1024);
+?>
+	})
     .run()
 
   uppy.on('upload-success', (file, response) => {
