@@ -2,6 +2,18 @@
 
 $statedb = __DIR__ . DIRECTORY_SEPARATOR . 'uploads' . DIRECTORY_SEPARATOR . '.state.sqlite';
 $uploaddir = __DIR__ . DIRECTORY_SEPARATOR . 'uploads';
+$jwtcookie = "CF_Authorization";
+
+if (!isset($_COOKIE[$jwtcookie])) {
+	header("HTTP/1.0 401 Unauthorized");
+	exit(0);
+}
+list($jwtheader,$jwt,$jwtsignature) = explode('.',$_COOKIE[$jwtcookie]);
+$jwt = json_decode(base64_decode($jwt),true);
+if (!isset($jwt['email'])) {
+	header("HTTP/1.0 401 Unauthorized");
+	exit(0);
+}
 
 $scheme = ((!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS']!=='off') ||
            $_SERVER['SERVER_PORT']==443 ||
@@ -22,12 +34,11 @@ $sql="CREATE TABLE IF NOT EXISTS uploads (
 $db->query($sql);
 
 $method=$_SERVER['REQUEST_METHOD'];
-$headers=getallheaders();
-if (array_key_exists('X-HTTP-Method-Override',$headers)) {
-	$method=$headers['X-HTTP-Method-Override'];
+if (array_key_exists('HTTP_X_HTTP_METHOD_OVERRIDE',$_SERVER)) {
+	$method=$_SERVER['HTTP_X_HTTP_METHOD_OVERRIDE'];
 }
 
-if (!array_key_exists('tus-resumable',$headers) || ($headers['tus-resumable'] != '1.0.0')) {
+if (!array_key_exists('HTTP_TUS_RESUMABLE',$_SERVER) || ($_SERVER['HTTP_TUS_RESUMABLE'] != '1.0.0')) {
 	header("HTTP/1.0 412 Precondition Failed");
 	header('Tus-Version: 1.0.0');
 	exit(0);
@@ -60,17 +71,17 @@ if ($method=="HEAD") {
 } elseif ($method=="PATCH") {
 	$fileid = pathinfo($_SERVER['REQUEST_URI'],PATHINFO_FILENAME);
 	$body = file_get_contents('php://input');
-	if ( strlen($body) != $headers['Content-Length'] ) {
-		error_log("PATCH: body length = ".strlen($body)." announced length = ".$headers['Content-Length']);
+	if ( strlen($body) != $_SERVER['CONTENT_LENGTH'] ) {
+		error_log("PATCH: body length = ".strlen($body)." announced length = ".$_SERVER['CONTENT_LENGTH']);
 		header("HTTP/1.0 500 Content-Length and body length mismatch");
 		exit(0);
 	}
 	// "c" : Open the file for writing only. If the file does not exist, it is created.
 	$fh = fopen($uploaddir . DIRECTORY_SEPARATOR . $fileid, "c");
-	fseek($fh,$headers['upload-offset'],SEEK_SET);
+	fseek($fh,$_SERVER['HTTP_UPLOAD_OFFSET'],SEEK_SET);
 	fwrite($fh,$body);
 	fclose($fh);
-	$newoffset = $headers['upload-offset'] + $headers['Content-Length'];
+	$newoffset = $_SERVER['HTTP_UPLOAD_OFFSET'] + $_SERVER['CONTENT_LENGTH'];
 	$sql="UPDATE uploads SET offset=:offset WHERE id=:id";
 	$stmt = $db->prepare($sql);
 	$stmt->bindValue(':id', $fileid, SQLITE3_TEXT);
@@ -81,11 +92,11 @@ if ($method=="HEAD") {
 	exit(0);
 } elseif ($method=="POST") {
 	// New file
-	$size=$headers['upload-length'];
+	$size=$_SERVER['HTTP_UPLOAD_LENGTH'];
 	// 24 bytes encoded in Base64 is 32 characters
 	$fileid = str_replace(array('+','/','='),array('-','_',''),base64_encode(openssl_random_pseudo_bytes(24,$cstrong)));
 	
-	foreach ( explode(',', $headers['upload-metadata']) as $kv ) {
+	foreach ( explode(',', $_SERVER['HTTP_UPLOAD_METADATA']) as $kv ) {
 		list($k,$v) = explode(' ',$kv);
 		$meta[$k] = base64_decode($v);
 	}
@@ -96,7 +107,7 @@ if ($method=="HEAD") {
 	$stmt = $db->prepare($sql);
 	$stmt->bindValue(':id',$fileid,SQLITE3_TEXT);
 	$stmt->bindValue(':name',$meta['name'],SQLITE3_TEXT);
-	$stmt->bindValue(':size',$headers['upload-length'],SQLITE3_INTEGER);
+	$stmt->bindValue(':size',$size,SQLITE3_INTEGER);
 	$stmt->bindValue(':offset',0,SQLITE3_INTEGER);
 	$stmt->bindValue(':created_at',date('Y-m-d\TH:i:s.Z\Z', $now),SQLITE3_TEXT);
 	$stmt->bindValue(':expires_at',date('Y-m-d\TH:i:s.Z\Z', $now + 86400),SQLITE3_TEXT);

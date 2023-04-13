@@ -10,6 +10,7 @@ Clearly inspired by [tus-php](https://github.com/ankitpokhrel/tus-php) from whic
 ## Installation
 
 Copy tus-server.php and .htaccess in a directory
+
 Create an "upload" directory that is writeable by the web server user
 
 That's all !
@@ -20,7 +21,7 @@ Tested on Linux with Apache and mod_php. You may need to adapt the set-up if run
 
 **Do not use in production**
 
-With the current code, anybody can upload anything on the server (including PHP code that can be interpreted). You **must** adapt the code to implement appropriate controls (access control, file sanity checks, antimalware, ...)
+There is a basic access control mechanism in the code. The server checks for an identity assertion in the form of a JWT token inside a cookie. This is by no way sufficient to ensure security, so implement your own security controls.
 
 ## Notes
 
